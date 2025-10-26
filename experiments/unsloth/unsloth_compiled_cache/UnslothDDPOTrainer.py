@@ -246,7 +246,7 @@ class UnslothDDPOConfig(DDPOConfig):
     
     def __init__(
         self,
-        exp_name = 'slm_math',
+        exp_name = 'qwen_math',
         run_name = '',
         seed = 3407,
         log_with = None,
