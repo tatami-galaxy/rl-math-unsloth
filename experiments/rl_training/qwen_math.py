@@ -9,6 +9,7 @@ from unsloth import FastLanguageModel
 from trl import SFTTrainer, SFTConfig
 from transformers import TextStreamer
 from datasets import load_dataset, Dataset
+from math_verify import parse, varify
 
 
 os.environ["UNSLOTH_VLLM_STANDBY"] = "1"
