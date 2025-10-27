@@ -1,16 +1,16 @@
 ---
 base_model: unsloth/Qwen3-0.6B-Base
 library_name: transformers
-model_name: results
+model_name: sft_runs
 tags:
 - generated_from_trainer
-- sft
 - unsloth
+- sft
 - trl
 licence: license
 ---
 
-# Model Card for results
+# Model Card for sft_runs
 
 This model is a fine-tuned version of [unsloth/Qwen3-0.6B-Base](https://huggingface.co/unsloth/Qwen3-0.6B-Base).
 It has been trained using [TRL](https://github.com/huggingface/trl).

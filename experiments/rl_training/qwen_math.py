@@ -7,6 +7,8 @@ import numpy as np
 import torch
 from unsloth import FastLanguageModel
 from trl import SFTTrainer, SFTConfig
+from trl import GRPOConfig, GRPOTrainer
+from vllm import SamplingParams
 from transformers import TextStreamer
 from datasets import load_dataset, Dataset
 from math_verify import parse, verify
@@ -202,11 +204,21 @@ def extract_hash_answer(text):
 
 
 def format_reward(completions, **kwargs):
-    pass
+    scores = []
+    for completion in completions:
+        score = 0
+        response = completion[0]["content"]
+        # if math-verify gets something
+        if parse(response) is not None: score += 1.0
+        scores.append(score)
+    return scores
 
 
 def accuracy_reward(prompts, completions, answer, **kwargs):
-    pass
+    question = prompts[0][-1]["content"]
+    responses = [completion[0]["content"] for completion in completions]
+    print([parse(response) for response in responses])
+    quit()
 
 
 def main():
@@ -286,7 +298,7 @@ def main():
                 lr_scheduler_type = args.lr_scheduler_type,
                 seed = args.seed,
                 report_to = "tensorboard", # Use TrackIO/WandB etc
-                output_dir='./results'
+                output_dir='./sft_runs'
             ),
         )
 
@@ -326,11 +338,78 @@ def main():
         "answer": extract_hash_answer(x["solution"]),
     }) 
 
-    # extract from boxed
+    # remove long prompts
+    tokenized = dataset.map(
+        lambda x: {"tokens" : tokenizer.apply_chat_template(x["prompt"], add_generation_prompt = True, tokenize = True)},
+        batched = True,
+    )
+    tokenized = tokenized.map(lambda x: {"L" : len(x["tokens"])})
+    maximum_length = int(np.quantile(tokenized["L"], 0.9))
+    max_prompt_length = maximum_length + 1 # + 1 just in case!
 
-    
-    print(parse(text))
+    # filter only samples smaller than 90% max length
+    dataset = dataset.select(np.where(np.array(tokenized["L"]) <= maximum_length)[0])
+    del tokenized
 
+    # GRPO trainer
+    max_completion_length = args.max_seq_len - max_prompt_length
+
+    vllm_sampling_params = SamplingParams(
+        min_p = 0.1,
+        top_p = 1.0,
+        top_k = -1,
+        seed = args.seed,
+        stop = [tokenizer.eos_token],
+        include_stop_str_in_output = True,
+    )
+
+    training_args = GRPOConfig(
+        #vllm_sampling_params = vllm_sampling_params,
+        temperature = 1.0,
+        learning_rate = 5e-6,
+        weight_decay = 0.01,
+        warmup_ratio = 0.1,
+        lr_scheduler_type = "linear",
+        optim = "adamw_8bit",
+        logging_steps = 1,
+        per_device_train_batch_size = 8,
+        gradient_accumulation_steps = 1, # Increase to 4 for smoother training
+        num_generations = 8, # Decrease if out of memory
+        max_prompt_length = max_prompt_length,
+        max_completion_length = max_completion_length,
+        # num_train_epochs = 1, # Set to 1 for a full training run
+        max_steps = 100,
+        save_steps = 100,
+        report_to = "tensorboard", # Can use Weights & Biases
+        output_dir = "./rl_runs",
+
+        # For optional training + evaluation
+        #fp16_full_eval = True,
+        #per_device_eval_batch_size = 8,
+        #eval_accumulation_steps = 1,
+        #eval_strategy = "steps",
+        #eval_steps = 1,
+    )
+
+    # Train
+    # For optional training + evaluation
+    #new_dataset = dataset.train_test_split(test_size = 0.01)
+
+    trainer = GRPOTrainer(
+        model = model,
+        processing_class = tokenizer,
+        reward_funcs = [
+            format_reward,
+            accuracy_reward,
+        ],
+        args = training_args,
+        train_dataset = dataset,
+
+        # For optional training + evaluation
+        #train_dataset = new_dataset["train"],
+        #eval_dataset = new_dataset["test"],
+    )
+    trainer.train()
 
 
 
