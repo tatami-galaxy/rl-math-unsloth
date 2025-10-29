@@ -9,6 +9,7 @@ from unsloth import FastLanguageModel
 from trl import SFTTrainer, SFTConfig
 from trl import GRPOConfig, GRPOTrainer
 from vllm import SamplingParams
+from safetensors import safe_open
 from transformers import TextStreamer
 from datasets import load_dataset, Dataset
 from math_verify import parse, verify
@@ -217,8 +218,20 @@ def format_reward(completions, **kwargs):
 def accuracy_reward(prompts, completions, answer, **kwargs):
     question = prompts[0][-1]["content"]
     responses = [completion[0]["content"] for completion in completions]
-    print([parse(response) for response in responses])
-    quit()
+    extracted_responses = [parse(response) for response in responses]
+
+    scores = []
+    for guess, true_answer in zip(extracted_responses, answer):
+
+        if guess is None:
+            scores.append(-2.0)
+            continue
+        if verify(parse(true_answer), guess):
+            scores.append(5.0)
+        else:
+            scores.append(-1.0)
+    return scores
+
 
 
 def main():
@@ -411,9 +424,38 @@ def main():
     )
     trainer.train()
 
+    model.save_lora("grpo_saved_lora")
 
+    tensors = {}
+    with safe_open("grpo_saved_lora/adapter_model.safetensors", framework = "pt") as f:
+        # Verify both A and B are non zero
+        for key in f.keys():
+            tensor = f.get_tensor(key)
+            n_zeros = (tensor == 0).sum() / tensor.numel()
+            assert(n_zeros.item() != tensor.numel())
 
-    
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user",   "content": "What is the sqrt of 101?"},
+    ]
+
+    text = tokenizer.apply_chat_template(
+        messages,
+        add_generation_prompt = True, # Must add for generation
+        tokenize = False,
+    )
+    sampling_params = SamplingParams(
+        temperature = 1.0,
+        top_k = 50,
+        max_tokens = 2048,
+    )
+    output = model.fast_generate(
+        text,
+        sampling_params = sampling_params,
+        lora_request = model.load_lora("grpo_saved_lora"),
+    )[0].outputs[0].text
+
+    print(output)
     
 if __name__ == "__main__":
     main()
