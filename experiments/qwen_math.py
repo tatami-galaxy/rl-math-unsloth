@@ -4,6 +4,8 @@ import gc
 import pandas as pd
 import numpy as np
 
+from template import SYSTEM_PROMPT, create_chat_template
+
 import torch
 from unsloth import FastLanguageModel
 from trl import SFTTrainer, SFTConfig
@@ -17,6 +19,7 @@ from math_verify import parse, verify
 
 os.environ["UNSLOTH_VLLM_STANDBY"] = "1"
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "expandable_segments:False"
+
 
 
 def parse_arguments():
@@ -152,7 +155,6 @@ def parse_arguments():
     return parser.parse_args()
 
 
-
 def create_chat_template(tokenizer):
     reasoning_start = "<think>"
     reasoning_end   = "</think>"  
@@ -175,23 +177,21 @@ def create_chat_template(tokenizer):
         "{% if add_generation_prompt %}{{ '{reasoning_start}' }}"\
         "{% endif %}"
 
-    system_prompt = "You are given a math problem. Please reason step by step, and put your final answer within \\boxed{}."
-    
     chat_template = chat_template\
-        .replace("'{system_prompt}'",   f"'{system_prompt}'")\
+        .replace("'{system_prompt}'",   f"'{SYSTEM_PROMPT}'")\
         .replace("'{reasoning_start}'", f"'{reasoning_start}'")
     
     tokenizer.chat_template = chat_template
 
-    return tokenizer, system_prompt
+    return tokenizer
 
 
 
-def format_dataset(x, system_prompt):
+def format_dataset(x):
     problem = x["problem"]
     solution = x["generated_solution"]
     return [
-        {"role" : "system",    "content" : system_prompt},
+        {"role" : "system",    "content" : SYSTEM_PROMPT},
         {"role" : "user",      "content" : problem},
         {"role" : "assistant", "content" : solution},
     ]
@@ -262,7 +262,7 @@ def main():
     )
 
     # create or modify chat template
-    tokenizer, system_prompt = create_chat_template(tokenizer)
+    tokenizer = create_chat_template(tokenizer)
 
     # sft before rl to force format
     if args.sft:
@@ -280,7 +280,7 @@ def main():
         dataset = dataset.iloc[np.where(is_number)[0]]
 
         # format dataset
-        dataset["messages"] = dataset.apply(format_dataset, args=(system_prompt,), axis=1)
+        dataset["messages"] = dataset.apply(format_dataset, args=(SYSTEM_PROMPT,), axis=1)
         #tokenizer.apply_chat_template(dataset["messages"][0], tokenize=False)
 
         # truncate fine-tuning dataset to max_seq_len/2
@@ -345,7 +345,7 @@ def main():
     # process dataset
     dataset = dataset.map(lambda x: {
         "prompt" : [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user",   "content": x["prompt"]},
         ],
         "answer": extract_hash_answer(x["solution"]),
@@ -435,7 +435,7 @@ def main():
             assert(n_zeros.item() != tensor.numel())
 
     messages = [
-        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user",   "content": "What is the sqrt of 101?"},
     ]
 

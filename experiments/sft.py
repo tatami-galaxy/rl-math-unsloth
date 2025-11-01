@@ -4,7 +4,7 @@ import chz
 from functools import partial
 
 from sft_config import SFTHyps
-from template import create_chat_template
+from template import SYSTEM_PROMPT, create_chat_template
 
 from datasets import load_dataset
 
@@ -23,12 +23,12 @@ def get_root_dir():
     return root
 
 # format dataset for sft
-def format_dataset(x, system_prompt, tokenizer):
+def format_dataset(x, tokenizer):
     problem = x["problem"]
     solution = x["generated_solution"]
     expected_answer = x["expected_answer"]
     messages =  [
-        {"role" : "system",    "content" : system_prompt},
+        {"role" : "system",    "content" : SYSTEM_PROMPT},
         {"role" : "user",      "content" : problem},
         {"role" : "assistant", "content" : solution},
     ]
@@ -54,6 +54,7 @@ def main(config: SFTHyps):
         max_lora_rank = config.lora_rank,
         gpu_memory_utilization = config.gpu_memory_utilization
     )
+    print(tokenizer.chat_template)
     # Load LoRA
     model = FastLanguageModel.get_peft_model(
         model,
@@ -68,7 +69,7 @@ def main(config: SFTHyps):
     )
 
     # create or modify chat template
-    tokenizer, system_prompt = create_chat_template(tokenizer)
+    tokenizer = create_chat_template(tokenizer)
 
     # Load dataset
     dataset = load_dataset(config.sft_dataset, split=config.sft_dataset_split)
@@ -80,7 +81,6 @@ def main(config: SFTHyps):
     dataset = dataset.map(
         partial(
             format_dataset,
-            system_prompt=system_prompt,
             tokenizer=tokenizer,
         ),
         batched = False,

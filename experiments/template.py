@@ -1,7 +1,8 @@
+SYSTEM_PROMPT = "You are given a math problem. Please reason step by step, and put your final answer within \\boxed{}."
+
 def create_chat_template(tokenizer):
     reasoning_start = "<think>"
     reasoning_end   = "</think>"  
-    system_prompt = "You are given a math problem. Please reason step by step, and put your final answer within \\boxed{}."
 
     chat_template = \
         "{% if messages[0]['role'] == 'system' %}"\
@@ -21,9 +22,9 @@ def create_chat_template(tokenizer):
         "{% if add_generation_prompt %}{{ '{reasoning_start}' }}"\
         "{% endif %}"
     
-    chat_template = chat_template.replace("'{system_prompt}'", f"'{system_prompt}'")
+    chat_template = chat_template.replace("'{system_prompt}'", f"'{SYSTEM_PROMPT}'")
     chat_template = chat_template.replace("'{reasoning_start}'", f"'{reasoning_start}'")
     
     tokenizer.chat_template = chat_template
 
-    return tokenizer, system_prompt
+    return tokenizer
