@@ -1,13 +1,13 @@
 import chz
 
 @chz.chz
-class SFTHyps:
+class RLHyps:
 
     seed: int = 42
 
     # Dataset
-    sft_dataset: str = "unsloth/OpenMathReasoning-mini"
-    sft_dataset_split: str = "cot"
+    rl_dataset: str = "unsloth/OpenMathReasoning-mini"
+    rl_dataset_split: str = "cot"
 
     # Model parameters
     model_name: str # required

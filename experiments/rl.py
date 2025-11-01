@@ -3,9 +3,10 @@ from os.path import dirname
 import chz
 from functools import partial
 
-from sft_config import SFTHyps
+from rl_config import RLHyps
 from template import create_chat_template
 
+from math_verify import parse, verify
 from datasets import load_dataset
 
 from unsloth import FastLanguageModel
@@ -38,8 +39,43 @@ def format_dataset(x, system_prompt, tokenizer):
     }
 
 
+def extract_hash_answer(text):
+    if "####" in text:
+        return text.split("####")[1].strip()
+    return text
 
-def main(config: SFTHyps):
+
+def format_reward(completions, **kwargs):
+    scores = []
+    for completion in completions:
+        score = 0
+        response = completion[0]["content"]
+        # if math-verify gets something
+        if parse(response) is not None: score += 1.0
+        scores.append(score)
+    return scores
+
+
+def accuracy_reward(prompts, completions, answer, **kwargs):
+    question = prompts[0][-1]["content"]
+    responses = [completion[0]["content"] for completion in completions]
+    extracted_responses = [parse(response) for response in responses]
+
+    scores = []
+    for guess, true_answer in zip(extracted_responses, answer):
+
+        if guess is None:
+            scores.append(-2.0)
+            continue
+        if verify(parse(true_answer), guess):
+            scores.append(5.0)
+        else:
+            scores.append(-1.0)
+    return scores
+
+
+
+def main(config: RLHyps):
 
     root = get_root_dir()
 
