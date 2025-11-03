@@ -1,11 +1,11 @@
 {
   "alpha_pattern": {},
   "auto_mapping": {
-    "base_model_class": "LlamaForCausalLM",
-    "parent_library": "transformers.models.llama.modeling_llama",
+    "base_model_class": "Qwen3ForCausalLM",
+    "parent_library": "transformers.models.qwen3.modeling_qwen3",
     "unsloth_fixed": true
   },
-  "base_model_name_or_path": "unsloth/Llama-3.2-1B-Instruct",
+  "base_model_name_or_path": "unsloth/Qwen3-0.6B",
   "bias": "none",
   "corda_config": null,
   "eva_config": null,
@@ -30,12 +30,12 @@
   "revision": null,
   "target_modules": [
     "gate_proj",
-    "k_proj",
     "o_proj",
-    "v_proj",
     "q_proj",
     "down_proj",
-    "up_proj"
+    "v_proj",
+    "up_proj",
+    "k_proj"
   ],
   "target_parameters": null,
   "task_type": "CAUSAL_LM",
