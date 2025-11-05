@@ -3,7 +3,7 @@ from os.path import dirname
 import chz
 from functools import partial
 
-from sft_config import SFTHyps
+from experiments.sft.sft_config import SFTHyps
 from template import SYSTEM_PROMPT, create_chat_template
 
 from datasets import load_dataset

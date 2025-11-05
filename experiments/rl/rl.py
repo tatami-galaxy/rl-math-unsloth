@@ -3,7 +3,7 @@ from os.path import dirname
 import chz
 import numpy as np
 
-from rl_config import RLHyps
+from experiments.rl.rl_config import RLHyps
 from template import SYSTEM_PROMPT, create_chat_template
 
 from math_verify import parse, verify
