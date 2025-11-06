@@ -1,41 +1,48 @@
 import os
-from os.path import dirname
-import chz
-from functools import partial
+import sys
+sys.path.append("..")
+from sft_config import SFTHyps
+from utils import SYSTEM_PROMPT, REASONING_START
+from utils import get_root_dir, create_chat_template
 
-from experiments.sft.sft_config import SFTHyps
-from template import SYSTEM_PROMPT, create_chat_template
+from functools import partial
+import chz
 
 from datasets import load_dataset
 
 from unsloth import FastLanguageModel
 from trl import SFTTrainer, SFTConfig
 
-# Disable standby mode to avoid expandable_segments conflict
+# causes expandable_segments conflict
 # os.environ["UNSLOTH_VLLM_STANDBY"] = "1"
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:False"
 
 
-def get_root_dir():
-    root = os.path.abspath('')
-    while root.split('/')[-1] != 'rl-math-unsloth':
-        root = dirname(root)
-    return root
-
 # format dataset for sft
 def format_dataset(x, tokenizer):
-    problem = x["problem"]
-    solution = x["generated_solution"]
-    expected_answer = x["expected_answer"]
-    messages =  [
-        {"role" : "system",    "content" : SYSTEM_PROMPT},
-        {"role" : "user",      "content" : problem},
-        {"role" : "assistant", "content" : solution},
-    ]
-    return {
-        "text" : tokenizer.apply_chat_template(messages, tokenize=False),
-        "expected_answer" : expected_answer,
+
+    def process_trace(q, trace):
+        messages =  [
+            {"role" : "system",    "content" : SYSTEM_PROMPT},
+            # add <think> token after question
+            {"role" : "user",      "content" : q+REASONING_START},
+            {"role" : "assistant", "content" : trace},
+        ]
+        # no generation_prompt because this is sft, needed for rl
+        return tokenizer.apply_chat_template(messages, tokenize=False) 
+
+    new_examples = {
+        "text": [],
+        "answer": [],
     }
+    for i, question in enumerate(x["question"]):
+        answer = x["final_answer"][i]
+        traces = [x["r1_solution_1"][i], x["r1_solution_2"][i], x["r1_solution_3"][i]]
+        for trace in traces:
+            new_examples["text"].append(process_trace(question, trace))
+            new_examples["answer"].append(answer)
+
+    return new_examples
 
 
 
@@ -47,14 +54,12 @@ def main(config: SFTHyps):
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name = config.model_name,
         max_seq_length = config.max_seq_len,
-        load_in_4bit = config.load_in_4bit,
-        load_in_8bit = config.load_in_8bit,
-        load_in_16bit = config.load_in_16bit,
+        load_in_16bit = config.load_in_16bit, # -> default?
         fast_inference = config.fast_inference, 
         max_lora_rank = config.lora_rank,
-        gpu_memory_utilization = config.gpu_memory_utilization
+        gpu_memory_utilization = config.gpu_memory_utilization,
+        device_map = config.device_map,
     )
-    print(tokenizer.chat_template)
     # Load LoRA
     model = FastLanguageModel.get_peft_model(
         model,
@@ -71,23 +76,22 @@ def main(config: SFTHyps):
     # create or modify chat template
     tokenizer = create_chat_template(tokenizer)
 
-    # Load dataset
+    # load dataset
     dataset = load_dataset(config.sft_dataset, split=config.sft_dataset_split)
 
-    # Filter None values
-    dataset = dataset.filter(lambda x: x["expected_answer"] is not None)
-
-    # Format dataset to chat template
+    # format dataset to chat template
+    # create 3 examples from each deepmath example
+    # with the 3 given reasoning traces
     dataset = dataset.map(
         partial(
             format_dataset,
             tokenizer=tokenizer,
         ),
-        batched = False,
+        batched = True,
         remove_columns=dataset.column_names,
-    )
+    ).shuffle(config.seed)
 
-    # Truncate fine-tuning dataset to max_seq_len
+    # truncate fine-tuning dataset to max_seq_len
     dataset = dataset.filter(lambda x: len(x["text"]) <= config.max_seq_len)
 
     # Train
@@ -103,7 +107,7 @@ def main(config: SFTHyps):
             num_train_epochs = config.num_train_epochs, # Set this for 1 full training run.
             learning_rate = config.learning_rate, # Reduce to 2e-5 for long training runs
             logging_steps = config.logging_steps,
-            #optim = config.optim,
+            optim = config.optim,
             weight_decay = config.weight_decay,
             lr_scheduler_type = config.lr_scheduler_type,
             seed = config.seed,

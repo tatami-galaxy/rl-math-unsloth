@@ -1,8 +1,20 @@
+import os
+from os.path import dirname
+
+
 SYSTEM_PROMPT = "You are given a math problem. Please reason step by step, and put your final answer within \\boxed{}."
+REASONING_START = "<think>"
+REASONING_END = "</think>" 
+
+
+def get_root_dir():
+    root = os.path.abspath('')
+    while root.split('/')[-1] != 'rl-math-unsloth':
+        root = dirname(root)
+    return root
+
 
 def create_chat_template(tokenizer):
-    reasoning_start = "<think>"
-    reasoning_end   = "</think>"  
 
     chat_template = \
         "{% if messages[0]['role'] == 'system' %}"\
@@ -23,7 +35,7 @@ def create_chat_template(tokenizer):
         "{% endif %}"
     
     chat_template = chat_template.replace("'{system_prompt}'", f"'{SYSTEM_PROMPT}'")
-    chat_template = chat_template.replace("'{reasoning_start}'", f"'{reasoning_start}'")
+    chat_template = chat_template.replace("'{reasoning_start}'", f"'{REASONING_START}'")
     
     tokenizer.chat_template = chat_template
 
