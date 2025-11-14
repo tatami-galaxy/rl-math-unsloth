@@ -6,6 +6,9 @@ class RLHyps:
     seed: int = 42
 
     # Dataset
+    # math-dataset/DeepScaleR-Preview-Dataset
+    # POLARIS-Project/Polaris-Dataset-53K
+    # open-r1/DAPO-Math-17k-Processed
     rl_dataset: str = "open-r1/DAPO-Math-17k-Processed"
     rl_dataset_config: str = "en"
 
