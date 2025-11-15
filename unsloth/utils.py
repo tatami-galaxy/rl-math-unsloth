@@ -9,7 +9,9 @@ REASONING_END = "</think>"
 
 def get_root_dir():
     root = os.path.abspath('')
-    while root.split('/')[-1] != 'rl-math-unsloth':
+    project_name = 'rl-math-reasoning'
+    print("Project name set as {}. Make sure it is correct!".format(project_name))
+    while root.split('/')[-1] != project_name:
         root = dirname(root)
     return root
 

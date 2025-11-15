@@ -19,7 +19,7 @@ class RLHyps:
     load_in_4bit: bool = False
     load_in_8bit: bool = False
     load_in_16bit: bool = True
-    max_seq_len: int = 4096
+    max_seq_len: int = 8192     # 4096, 8192
 
     # Training parameters
     temperature: float = 1.0

@@ -16,6 +16,7 @@ from trl import SFTTrainer, SFTConfig
 # causes expandable_segments conflict
 # os.environ["UNSLOTH_VLLM_STANDBY"] = "1"
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:False"
+os.environ["UNSLOTH_COMPILE_DISABLE"] = "1"
 
 
 # format dataset for sft
@@ -35,6 +36,7 @@ def format_dataset(x, tokenizer):
         "text": [],
         "answer": [],
     }
+    # all 3 traces
     for i, question in enumerate(x["question"]):
         answer = x["final_answer"][i]
         traces = [x["r1_solution_1"][i], x["r1_solution_2"][i], x["r1_solution_3"][i]]
@@ -54,24 +56,28 @@ def main(config: SFTHyps):
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name = config.model_name,
         max_seq_length = config.max_seq_len,
-        load_in_16bit = config.load_in_16bit, # -> default?
+        load_in_16bit = config.load_in_16bit, 
+        load_in_8bit = config.load_in_8bit, 
+        load_in_4bit = config.load_in_4bit, 
+        full_finetuning = config.full_finetuning, 
         fast_inference = config.fast_inference, 
         max_lora_rank = config.lora_rank,
         gpu_memory_utilization = config.gpu_memory_utilization,
         device_map = config.device_map,
     )
-    # Load LoRA
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r = config.lora_rank,
-        target_modules = [
-            "q_proj", "k_proj", "v_proj", "o_proj",
-            "gate_proj", "up_proj", "down_proj",
-        ],
-        lora_alpha = config.lora_rank*2 if config.lora_alpha is None else config.lora_alpha, # *2 speeds up training
-        use_gradient_checkpointing = "unsloth", # Reduces memory usage
-        random_state = config.seed,
-    )
+    if not config.full_finetuning:
+        # Load LoRA
+        model = FastLanguageModel.get_peft_model(
+            model,
+            r = config.lora_rank,
+            target_modules = [
+                "q_proj", "k_proj", "v_proj", "o_proj",
+                "gate_proj", "up_proj", "down_proj",
+            ],
+            lora_alpha = config.lora_rank*2 if config.lora_alpha is None else config.lora_alpha, # *2 speeds up training
+            use_gradient_checkpointing = "unsloth", # Reduces memory usage
+            random_state = config.seed,
+        )
 
     # create or modify chat template
     tokenizer = create_chat_template(tokenizer)
@@ -92,8 +98,19 @@ def main(config: SFTHyps):
     ).shuffle(config.seed)
 
     # truncate fine-tuning dataset to max_seq_len
+    # seq_len: 8192 -> dataset: 62255
     dataset = dataset.filter(lambda x: len(x["text"]) <= config.max_seq_len)
 
+    # set output directory
+    model_name = config.model_name.split("/")[-1]
+    dataset_name = config.sft_dataset.split("/")[-1]
+    if config.full_finetuning:
+        train_type = "full"
+    else:
+        train_type = "lora_{}".format(config.lora_rank)
+    checkpoint_folder = model_name + "_" + dataset_name + "_" + train_type
+    output_dir = root+"/"+config.output_dir+"/"+checkpoint_folder
+    
     # Train
     trainer = SFTTrainer(
         model = model,
@@ -102,17 +119,18 @@ def main(config: SFTHyps):
         args = SFTConfig(
             dataset_text_field = "text",
             per_device_train_batch_size = config.per_device_train_batch_size,
-            gradient_accumulation_steps = config.gradient_accumulation_steps, # Use GA to mimic batch size!
+            gradient_accumulation_steps = config.gradient_accumulation_steps, # Use GA to mimic batch size
             warmup_steps = config.warmup_steps,
             num_train_epochs = config.num_train_epochs, # Set this for 1 full training run.
             learning_rate = config.learning_rate, # Reduce to 2e-5 for long training runs
             logging_steps = config.logging_steps,
+            save_steps = config.save_steps,
             optim = config.optim,
             weight_decay = config.weight_decay,
             lr_scheduler_type = config.lr_scheduler_type,
             seed = config.seed,
-            report_to = "tensorboard", # Use TrackIO/WandB etc
-            output_dir=root+"/"+config.output_dir,
+            report_to = "tensorboard", 
+            output_dir=output_dir
         ),
     )
 
