@@ -1,22 +1,20 @@
-import os
 import sys
 sys.path.append("..")
-from sft_config import SFTHyps
-from utils import SYSTEM_PROMPT, REASONING_START
-from utils import get_root_dir, create_chat_template
+from trl_sft_config import TRLSFTHyps
+from trl_utils import SYSTEM_PROMPT, REASONING_START
+from trl_utils import get_root_dir, create_chat_template
+from trl_sft_config import TRLSFTHyps
 
 from functools import partial
-import chz
 
 from datasets import load_dataset
 
-from unsloth import FastLanguageModel
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    HfArgumentParser,
+)
 from trl import SFTTrainer, SFTConfig
-
-# causes expandable_segments conflict
-# os.environ["UNSLOTH_VLLM_STANDBY"] = "1"
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:False"
-os.environ["UNSLOTH_COMPILE_DISABLE"] = "1"
 
 
 # format dataset for sft
@@ -48,39 +46,34 @@ def format_dataset(x, tokenizer):
 
 
 
-def main(config: SFTHyps):
+def main():
 
     root = get_root_dir()
 
-    # Load model
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name = config.model_name,
-        max_seq_length = config.max_seq_len,
-        load_in_16bit = config.load_in_16bit, 
-        load_in_8bit = config.load_in_8bit, 
-        load_in_4bit = config.load_in_4bit, 
-        full_finetuning = config.full_finetuning, 
-        fast_inference = config.fast_inference, 
-        max_lora_rank = config.lora_rank,
-        gpu_memory_utilization = config.gpu_memory_utilization,
-        device_map = config.device_map,
+    # get hyps
+    parser = HfArgumentParser(TRLSFTHyps)
+    config = parser.parse_args_into_dataclasses()[0]
+    if config.model_name is None:
+        raise ValueError("model name must be specified.")
+    if config.max_seq_len is None:
+        raise ValueError("max sequence length must be specified.")
+
+    print("cp size set to {}. Check accelerate config to verify".format(config.pad_to_multiple_of//2))
+
+    # Load model, tokenizer
+    model = AutoModelForCausalLM.from_pretrained(
+        config.model_name,
+        revision=config.model_revision,
+        dtype="auto",
+        device_map="auto",
+        #attn_implementation='flash_attention_2',
     )
-    if not config.full_finetuning:
-        # Load LoRA
-        model = FastLanguageModel.get_peft_model(
-            model,
-            r = config.lora_rank,
-            target_modules = [
-                "q_proj", "k_proj", "v_proj", "o_proj",
-                "gate_proj", "up_proj", "down_proj",
-            ],
-            lora_alpha = config.lora_rank*2 if config.lora_alpha is None else config.lora_alpha, # *2 speeds up training
-            use_gradient_checkpointing = "unsloth", # Reduces memory usage
-            random_state = config.seed,
-        )
+    tokenizer = AutoTokenizer.from_pretrained(config.model_name)
 
     # create or modify chat template
-    tokenizer = create_chat_template(tokenizer)
+    if tokenizer.chat_template is None:
+        print("No chat template found! Creating custom chat template...")
+        tokenizer = create_chat_template(tokenizer)
 
     # load dataset
     dataset = load_dataset(config.sft_dataset, split=config.sft_dataset_split)
@@ -98,33 +91,45 @@ def main(config: SFTHyps):
     ).shuffle(config.seed)
 
     # truncate fine-tuning dataset to max_seq_len
+    # seq_len: 16384 -> dataset: 200387 
     # seq_len: 8192 -> dataset: 62255
     # seq_len: 4096 -> dataset: 1877
     dataset = dataset.filter(lambda x: len(x["text"]) <= config.max_seq_len)
 
+    # sample for testing
+    if config.sample and len(dataset) > config.num_samples:
+        dataset = dataset.select(range(config.num_samples))
+
     # set output directory
     model_name = config.model_name.split("/")[-1]
     dataset_name = config.sft_dataset.split("/")[-1]
-    if config.full_finetuning:
-        train_type = "full"
-    else:
-        train_type = "lora_{}".format(config.lora_rank)
     seq_len = config.max_seq_len
-    checkpoint_folder = model_name + "_" + dataset_name + "_" + train_type + "_" + str(seq_len)
+    checkpoint_folder = model_name + "_" + dataset_name + "_seq_" + str(seq_len)
     output_dir = root+"/"+config.output_dir+"/"+checkpoint_folder
     
     # Train
     trainer = SFTTrainer(
         model = model,
-        tokenizer = tokenizer,
+        processing_class = tokenizer,
         train_dataset = dataset,
         args = SFTConfig(
+            # dataset
             dataset_text_field = "text",
+            # context parallelism
+            # For cp_size=2: use pad_to_multiple_of=4 (since cp_size * 2 = 4)
+            # For cp_size=4: use pad_to_multiple_of=8 (since cp_size * 2 = 8)
+            pad_to_multiple_of = config.pad_to_multiple_of, # ensures divisibility by cp_size * 2
+            max_length = config.max_seq_len,
+            #packing=True,   # use packing to reduce padding -> needs flash attention
+            #use_liger_kernel=True,  # compatible with CP
             per_device_train_batch_size = config.per_device_train_batch_size,
+            # The activation_checkpointing in FSDP config and the gradient_checkpointing in training arg can't be set to True simultaneously
+            gradient_checkpointing = False,
             gradient_accumulation_steps = config.gradient_accumulation_steps, # Use GA to mimic batch size
+            # other training args
             warmup_steps = config.warmup_steps,
-            num_train_epochs = config.num_train_epochs, # Set this for 1 full training run.
-            learning_rate = config.learning_rate, # Reduce to 2e-5 for long training runs
+            num_train_epochs = config.num_train_epochs, # do 1 epoch
+            learning_rate = config.learning_rate, # 2e-5 with constant schedule
             logging_steps = config.logging_steps,
             save_steps = config.save_steps,
             optim = config.optim,
@@ -141,4 +146,4 @@ def main(config: SFTHyps):
 
 
 if __name__ == "__main__":
-    chz.nested_entrypoint(main)
+    main()

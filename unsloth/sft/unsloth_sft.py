@@ -1,10 +1,9 @@
 import os
 import sys
 sys.path.append("..")
-from trl.sft.sft_config import SFTHyps
+from unsloth_sft_config import SFTHyps
 from utils import SYSTEM_PROMPT, REASONING_START
 from utils import get_root_dir, create_chat_template
-quit()
 
 from functools import partial
 import chz
