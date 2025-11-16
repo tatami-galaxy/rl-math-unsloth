@@ -20,6 +20,8 @@ class TRLSFTHyps:
     max_seq_len: int = field(default=None)     # 4096, 8192, 16384
     per_device_train_batch_size: int = field(default=8)
     gradient_accumulation_steps: int = field(default=4)
+    # For cp_size=2: use pad_to_multiple_of=4 (since cp_size * 2 = 4)
+    # For cp_size=4: use pad_to_multiple_of=8 (since cp_size * 2 = 8)
     pad_to_multiple_of: int = field(default=4)
     num_train_epochs: int = field(default=1)
 

@@ -58,7 +58,7 @@ def main():
     if config.max_seq_len is None:
         raise ValueError("max sequence length must be specified.")
 
-    print("cp size set to {}. Check accelerate config to verify".format(config.pad_to_multiple_of//2))
+    print("cp size set to {}. Modify ~/.cache/huggingface/accelerate/default_config.yaml to change".format(config.pad_to_multiple_of//2))
 
     # Load model, tokenizer
     model = AutoModelForCausalLM.from_pretrained(
