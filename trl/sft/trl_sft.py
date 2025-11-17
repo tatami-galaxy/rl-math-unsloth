@@ -8,7 +8,7 @@ from trl_sft_config import TRLSFTHyps
 from functools import partial
 
 from datasets import load_dataset
-
+import accelerate
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -58,21 +58,21 @@ def main():
     if config.max_seq_len is None:
         raise ValueError("max sequence length must be specified.")
 
-    print("cp size set to {}. Modify ~/.cache/huggingface/accelerate/default_config.yaml to change".format(config.pad_to_multiple_of//2))
+    accelerate.print("cp size set to {}. Modify accelerate config and sft config to change".format(config.pad_to_multiple_of//2))
 
     # Load model, tokenizer
     model = AutoModelForCausalLM.from_pretrained(
         config.model_name,
         revision=config.model_revision,
         dtype="auto",
-        device_map="auto",
+        #device_map="auto",
         #attn_implementation='flash_attention_2',
     )
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
 
     # create or modify chat template
     if tokenizer.chat_template is None:
-        print("No chat template found! Creating custom chat template...")
+        accelerate.print("No chat template found! Creating custom chat template...")
         tokenizer = create_chat_template(tokenizer)
 
     # load dataset
@@ -115,6 +115,7 @@ def main():
         args = SFTConfig(
             # dataset
             dataset_text_field = "text",
+
             # context parallelism
             # For cp_size=2: use pad_to_multiple_of=4 (since cp_size * 2 = 4)
             # For cp_size=4: use pad_to_multiple_of=8 (since cp_size * 2 = 8)
@@ -126,7 +127,8 @@ def main():
             # The activation_checkpointing in FSDP config and the gradient_checkpointing in training arg can't be set to True simultaneously
             gradient_checkpointing = False,
             gradient_accumulation_steps = config.gradient_accumulation_steps, # Use GA to mimic batch size
-            # other training args
+
+            # training args
             warmup_steps = config.warmup_steps,
             num_train_epochs = config.num_train_epochs, # do 1 epoch
             learning_rate = config.learning_rate, # 2e-5 with constant schedule
