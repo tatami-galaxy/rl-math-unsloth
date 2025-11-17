@@ -1,3 +1,5 @@
+# TODO : same data size
+
 import sys
 sys.path.append("..")
 from trl_sft_config import TRLSFTHyps
