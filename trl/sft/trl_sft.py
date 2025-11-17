@@ -8,7 +8,6 @@ from trl_sft_config import TRLSFTHyps
 from functools import partial
 
 from datasets import load_dataset
-import accelerate
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -58,7 +57,7 @@ def main():
     if config.max_seq_len is None:
         raise ValueError("max sequence length must be specified.")
 
-    accelerate.print("cp size set to {}. Modify accelerate config and sft config to change".format(config.pad_to_multiple_of//2))
+    print("cp size set to {}. Modify accelerate config and sft config to change".format(config.pad_to_multiple_of//2))
 
     # Load model, tokenizer
     model = AutoModelForCausalLM.from_pretrained(
@@ -72,7 +71,7 @@ def main():
 
     # create or modify chat template
     if tokenizer.chat_template is None:
-        accelerate.print("No chat template found! Creating custom chat template...")
+        print("No chat template found! Creating custom chat template...")
         tokenizer = create_chat_template(tokenizer)
 
     # load dataset
