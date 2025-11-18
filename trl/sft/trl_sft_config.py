@@ -26,8 +26,9 @@ class TRLSFTHyps:
     num_train_epochs: int = field(default=1)
 
     # Checkpointing and evaluation
-    logging_steps: int = field(default=8)
-    save_steps: int = field(default=1000)
+    logging_steps: int = field(default=10)
+    save_steps: int = field(default=2000)
+    resume_from_checkpoint: bool = field(default=False)
 
     # Optimizer parameters
     optim: str = field(default="adamw_torch_fused")

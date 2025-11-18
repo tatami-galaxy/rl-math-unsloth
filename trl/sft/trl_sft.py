@@ -1,5 +1,6 @@
 # TODO : same data size
 
+import os
 import sys
 sys.path.append("..")
 from trl_sft_config import TRLSFTHyps
@@ -16,6 +17,14 @@ from transformers import (
     HfArgumentParser,
 )
 from trl import SFTTrainer, SFTConfig
+
+
+class NewSFTTrainer(SFTTrainer):  
+    def _save_checkpoint(self, model, trial):  
+        super()._save_checkpoint(model, trial)  # Default saving  
+        trainer_state_path = os.path.join(self.args.output_dir, 'trainer_state.json')  
+        self.state.save_to_json(trainer_state_path)  
+
 
 
 # format dataset for sft
@@ -109,7 +118,7 @@ def main():
     output_dir = root+"/"+config.output_dir+"/"+checkpoint_folder
     
     # Train
-    trainer = SFTTrainer(
+    trainer = NewSFTTrainer(
         model = model,
         processing_class = tokenizer,
         train_dataset = dataset,
@@ -144,7 +153,7 @@ def main():
         ),
     )
 
-    trainer.train()
+    trainer.train(resume_from_checkpoint=config.resume_from_checkpoint)
 
 
 
