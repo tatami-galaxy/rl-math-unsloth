@@ -28,13 +28,14 @@ class NewSFTTrainer(SFTTrainer):
 
 
 # format dataset for sft
-def format_dataset(x, tokenizer):
+def format_dataset(x, tokenizer, add_think=False):
 
-    def process_trace(q, trace):
+    def process_trace(q, trace, add_think):
+        think_token = REASONING_START if add_think else ''
         messages =  [
             {"role" : "system",    "content" : SYSTEM_PROMPT},
             # add <think> token after question
-            {"role" : "user",      "content" : q+REASONING_START},
+            {"role" : "user",      "content" : q+think_token},
             {"role" : "assistant", "content" : trace},
         ]
         # no generation_prompt because this is sft, needed for rl
@@ -49,7 +50,7 @@ def format_dataset(x, tokenizer):
         answer = x["final_answer"][i]
         traces = [x["r1_solution_1"][i], x["r1_solution_2"][i], x["r1_solution_3"][i]]
         for trace in traces:
-            new_examples["text"].append(process_trace(question, trace))
+            new_examples["text"].append(process_trace(question, trace, add_think))
             new_examples["answer"].append(answer)
 
     return new_examples
@@ -84,6 +85,7 @@ def main():
     if tokenizer.chat_template is None:
         print("No chat template found! Creating custom chat template...")
         tokenizer = create_chat_template(tokenizer)
+        config.add_think = True
 
     # load dataset
     dataset = load_dataset(config.sft_dataset, split=config.sft_dataset_split)
@@ -95,6 +97,7 @@ def main():
         partial(
             format_dataset,
             tokenizer=tokenizer,
+            add_think=config.add_think,
         ),
         batched = True,
         remove_columns=dataset.column_names,

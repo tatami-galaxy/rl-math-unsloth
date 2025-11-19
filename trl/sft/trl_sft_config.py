@@ -9,6 +9,7 @@ class TRLSFTHyps:
     # Dataset
     sft_dataset: str = field(default="zwhe99/DeepMath-103K")
     sft_dataset_split: str = field(default="train")
+    add_think: bool = field(default=False)
     sample: bool = field(default=False)
     num_samples: int = field(default=512)
 
