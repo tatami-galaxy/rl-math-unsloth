@@ -1,43 +1,26 @@
 from dataclasses import dataclass, field
 import random
+import sys
+sys.path.append('../')
+from trl_utils import SYSTEM_PROMPT
+from trl_utils import create_chat_template
 
-import csv
 from math_verify import parse, verify
 from tqdm.auto import tqdm
-from datasets import load_dataset
 
+from datasets import load_dataset
+from vllm import LLM, SamplingParams
 from transformers import HfArgumentParser
 from transformers.utils import logging
 logging.set_verbosity_error()
 
 
-def create_prompt(model_args, question):
-    think = model_args.think
-    no_think = model_args.no_think
-    prompt_type = model_args.prompt_type
-    # prompt type
-    if prompt_type == 'few_shot':
-        raise NotImplementedError
-    elif prompt_type == 'zero_shot':
-        prompt = "Please reason step by step, and put your final answer within \\boxed{{}}.\n\nQuestion : {}\n\nAnswer :"
-    # add think token to enable thinking
-    if think:
-        prompt = prompt + '/think'
-    # disable thinking
-    elif no_think:
-        prompt = prompt + '/no_think'
-    # final prompt
-    formated_prompt = prompt.format(question)
-    final_prompt = [{"role": "user", "content": formated_prompt}]
-    return final_prompt
-
-
-def run_model(vllm, prompt):
-    output = vllm.query_vllm_server(prompt)
-    # remove think tokens from output
-    if '</think>' in output:
-        output = output.split('</think>')[-1].strip('\n')
-    return output
+def create_prompt(question):
+    messages =  [
+        {"role" : "system",    "content" : SYSTEM_PROMPT},
+        {"role" : "user", "content" : question},
+    ]
+    return messages
 
 
 def get_accuracy(gold, answer):
@@ -47,11 +30,9 @@ def get_accuracy(gold, answer):
         return 0.0
 
 
-
 @dataclass
 class DataArguments:
 
-    data_dir: str = field(default=None)
     sample: bool = field(default=False)
     num_samples: int = field(default=100)
     seed: int = field(default=42)
@@ -61,11 +42,6 @@ class DataArguments:
 class ModelArguments:
 
     model_name: str = field(default=None)
-    think : bool = field(default=False)
-    no_think : bool = field(default=False)
-    port: int = field(default=None)
-    prompt_type: str = field(default=None)
-
 
 
 if __name__ == "__main__":
@@ -76,15 +52,6 @@ if __name__ == "__main__":
 
     # set seed
     random.seed(data_args.seed)
-
-    # get root dir
-    root = get_root_dir()
-
-    # data directory to save info
-    if data_args.data_dir is None:
-        data_dir = root + '/data/interim/'
-    else:
-        data_dir = data_args.data_dir
 
     # load dataset
     dataset_name = 'HuggingFaceH4/MATH-500'
@@ -97,30 +64,33 @@ if __name__ == "__main__":
         )
 
     # vllm object
-    vllm = VLLM(model_args.model_name, model_args.port)
+    llm = LLM(model=model_args.model_name)
 
     # eval
     bar = tqdm(range(len(dataset)))
     accuracy = 0.0
-    incorr = []
     for example in dataset:
         
         question = example['problem']
         answer = example['solution']
 
         # prompt
-        prompt = create_prompt(model_args, question)
+        prompt = create_prompt(question)
 
         # query model
-        output = run_model(vllm, prompt)
+        outputs = llm.chat(
+            prompt,
+            #sampling_params=sampling_params,
+            #chat_template=chat_template,
+            use_tqdm=False
+        )
+        solution = outputs[0].outputs[0].text
+        print(solution)
+        quit()
 
         # get accuracy
-        acc = get_accuracy(answer, output)
+        acc = get_accuracy(answer, solution)
         accuracy += acc
-
-        # store info
-        if acc == 0.0:
-            incorr.append((question, answer, output))
 
         bar.update(1)
 

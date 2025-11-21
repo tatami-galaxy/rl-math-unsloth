@@ -56,7 +56,6 @@ def format_dataset(x, tokenizer, add_think=False):
     return new_examples
 
 
-
 def main():
 
     root = get_root_dir()
@@ -83,9 +82,11 @@ def main():
 
     # create or modify chat template
     if tokenizer.chat_template is None:
-        print("No chat template found! Creating custom chat template...")
+        print("No chat template found. Creating custom chat template...")
         tokenizer = create_chat_template(tokenizer)
         config.add_think = True
+    else:
+        print("Chat template found.")
 
     # load dataset
     dataset = load_dataset(config.sft_dataset, split=config.sft_dataset_split)
