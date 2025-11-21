@@ -85,8 +85,6 @@ if __name__ == "__main__":
             use_tqdm=False
         )
         solution = outputs[0].outputs[0].text
-        print(solution)
-        quit()
 
         # get accuracy
         acc = get_accuracy(answer, solution)
