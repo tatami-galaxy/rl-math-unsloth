@@ -25,10 +25,13 @@ class TRLSFTHyps:
     # For cp_size=4: use pad_to_multiple_of=8 (since cp_size * 2 = 8)
     pad_to_multiple_of: int = field(default=4)
     num_train_epochs: int = field(default=1)
+    eval_dataset_size: float = field(default=0.1)
 
     # Checkpointing and evaluation
-    logging_steps: int = field(default=10)
-    save_steps: int = field(default=2000)
+    logging_steps: int = field(default=100)
+    eval_steps: int = field(default=100)
+    save_steps: int = field(default=200)
+    save_total_limit: int = field(default=3)
     resume_from_checkpoint: bool = field(default=False)
 
     # Optimizer parameters
